@@ -57,7 +57,7 @@ class Reminder:
     async def send_reminder(self, bot: commands.Bot) -> None:
         channel = bot.get_channel(self.channel_id)
         if channel:
-            await channel.send(f"<@{self.user_id}>, 설정된 리마인더입니다: {self.content}")
+            await channel.send(f"{self.content}")
 
     def decrement_interval(self) -> int:
         if self.interval > 0:
@@ -182,7 +182,7 @@ async def remind_command(interaction: discord.Interaction, day: str, time: str, 
     save_reminders_to_file()
 
     await interaction.response.send_message(
-        f"{','.join(days)} {time}에 '{content}' 내용으로 리마인더가 설정되었습니다. 반복 횟수: {'무한' if interval == -1 else interval}회",
+        f"{','.join(days)} {time}에 '{content}' 내용으로 리마인더가 설정되었습니다. 반복 횟수: {'무한정' if interval == -1 else interval}",
         ephemeral=True)
 
 
@@ -213,8 +213,8 @@ async def update_reminder_list(interaction: discord.Interaction) -> None:
     reminder_messages = []
     views = []
     for r in channel_reminders:
-        repeat_info = "무한" if r.interval == -1 else f"{r.interval}회"
-        reminder_messages.append(f"{r.day} {r.time} - {r.content} (반복: {repeat_info})")
+        repeat_info = "무한정" if r.interval == -1 else f"{r.interval}"
+        reminder_messages.append(f"{r.day} {r.time} - {r.content} (반복횟수: {repeat_info})")
         views.append(ReminderView(r))
 
     await interaction.edit_original_response(content="설정된 리마인더 목록:\n" + "\n".join(reminder_messages),
