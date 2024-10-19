@@ -13,7 +13,8 @@
 
 ## 설정파일
 
-`discord_config.json`에 디스코드 봇 토큰정보를 담아주세요.
+`.env` 파일을 생성하여 디스코드 봇 토큰정보를 담아주세요.
+(.env.example 참고)
 
 ## Python 설치 및 구동 (Ubuntu)
 
