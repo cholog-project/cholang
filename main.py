@@ -132,7 +132,7 @@ class SetupClient(commands.Bot):
             self.synced = True
 
     async def on_ready(self) -> None:
-        await self.change_presence(activity=discord.Game(name="개발중"))
+        await self.change_presence(activity=discord.Game(name="촐랑거리기"))
         scheduler.start()
         self.reminders = load_reminders_from_file(scheduler, self)
 
