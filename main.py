@@ -1,68 +1,121 @@
-import asyncio
 import datetime
-import json
-import uuid
-from typing import List
-from dotenv import load_dotenv
 import os
+import uuid
 
 import discord
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from discord import app_commands
 from discord.ext import commands
+from dotenv import load_dotenv
+
+from reminders import Reminder, save_reminders_to_file, load_reminders_from_file, schedule_reminder, KOREAN_DAYS_OF_WEEK
 
 load_dotenv()
-REMINDER_FILE_PATH = 'reminders.json'
 
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
-
-# Initialize the scheduler
 scheduler = AsyncIOScheduler()
 
 
-class Reminder:
-    def __init__(self, user_id: int, channel_id: int, day: str, time: str, interval: int, content: str, job_id: str):
-        self.user_id = user_id
-        self.channel_id = channel_id
-        self.day = day
-        self.time = time
-        self.interval = interval
-        self.content = content
-        self.job_id = job_id
-
-    def to_dict(self):
-        return {
-            'user_id': self.user_id,
-            'channel_id': self.channel_id,
-            'day': self.day,
-            'time': self.time,
-            'interval': self.interval,
-            'content': self.content,
-            'job_id': self.job_id
-        }
-
-    @staticmethod
-    def from_dict(data):
-        return Reminder(
-            user_id=data['user_id'],
-            channel_id=data['channel_id'],
-            day=data['day'],
-            time=data['time'],
-            interval=data['interval'],
-            content=data['content'],
-            job_id=data['job_id']
+class TemplateModal(discord.ui.Modal, title="질문 양식 입력"):
+    def __init__(self, template_text):
+        super().__init__()
+        self.template_text = template_text
+        self.text_input = discord.ui.TextInput(
+            label="질문 내용",
+            style=discord.TextStyle.long,
+            placeholder="질문을 작성하세요",
+            default=template_text
         )
+        self.add_item(self.text_input)
 
-    async def send_reminder(self, bot: commands.Bot) -> None:
-        channel = bot.get_channel(self.channel_id)
-        if channel:
-            await channel.send(f"{self.content}")
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        channel = interaction.channel
+        try:
+            if channel:
+                await channel.send(f"<@{user_id}>님의 질문이 제출되었습니다!\n{self.text_input.value}")
+                await interaction.response.send_message("질문이 작성되었어요!", ephemeral=True)
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
 
-    def decrement_interval(self) -> int:
-        if self.interval > 0:
-            self.interval -= 1
-        return self.interval
+
+class TemplateSelectView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        select = TemplateSelect()
+        self.add_item(select)
+        self.add_item(UseTemplateButton(select))
+
+
+class TemplateSelect(discord.ui.Select):
+    def __init__(self):
+        self.selected_template = ""
+        options = [
+            discord.SelectOption(label="구체적인 질문 템플릿", description="첫 번째 양식"),
+            discord.SelectOption(label="간단한 질문 템플릿", description="두 번째 양식"),
+            discord.SelectOption(label="이론 질문 템플릿", description="세 번째 양식"),
+            discord.SelectOption(label="자유 양식", description="네 번째 양식")
+        ]
+        super().__init__(placeholder="질문 양식을 선택하세요", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        templateEmbed = discord.Embed(title="선택한 질문 템플릿", color=discord.Color.blue())
+        if self.values[0] == "구체적인 질문 템플릿":
+            self.selected_template = (
+                "1. **초록스터디 강의 제목** : ex) 학습 테스트로 배우는 스프링 기초\n"
+                "2. **진행 중인 단계** : ex) Spring MVC(인증) - 2단계\n"
+                "3. **해결하려는 문제가 무엇인가요?** : ex) 예약 생성 시, NPE가 발생하고 있습니다.\n"
+                "4. **이를 해결하기 위해 본인이 한 시도** : ex) 예약을 생성할 때, 객체를 참조하고 있는 부분을 확인해보았습니다.\n"
+                "5. **코드로 첨부하기 어려운 내용은 스크린샷을 통해 첨부해주세요.**\n"
+                "   - 답변자가 참고할 만한 코드 첨부(선택)\n"
+                "   - 답변자가 참고할 만한 에러 메시지(선택)\n"
+                "6. **원하는 답변을 선택해주세요.**\n"
+                "   - [ ] 해결할 수 있는 구체적인 방안을 원합니다\n"
+                "   - [ ] 해결을 위한 힌트를 주세요\n"
+                "7. **질문에 대한 제목 작성** : **1 ~ 5번에서 작성한 내용을 토대로 질문의 제목을 작성**"
+            )
+        elif self.values[0] == "간단한 질문 템플릿":
+            self.selected_template = (
+                "**1. 문제 요약**\n"
+                "- **문제:** (예: API 호출 시 401 오류 발생)\n"
+                "**2. 상황 설명**\n"
+                "- **작업:** (예: 로그인 기능 구현 중)\n"
+                "- **파일:** (예: `login.js`)\n"
+                "**3. 시도한 방법**\n"
+                "- (예: 요청 형식 변경, CORS 설정 수정)\n"
+                "**4. 최종 질문**\n"
+                "- **질문:** (예: '왜 401 오류가 발생하나요?')"
+            )
+        elif self.values[0] == "이론 질문 템플릿":
+            self.selected_template = (
+                "1. **궁금증이 생긴 상황을 알려주세요!**\n"
+                "   - ex) 예외처리를 하고, 해당 예외상황이 되었을 때 스프링이 어떻게 동작하는지 궁금합니다\n"
+                "2. **질문자님이 생각하시는 질문의 키워드를 알려주세요!**\n"
+                "   - ex) 예외처리"
+            )
+        elif self.values[0] == "자유 양식":
+            self.selected_template = "자유롭게 질문을 작성하세요."
+
+        templateEmbed.description = self.selected_template
+
+        try:
+            await interaction.response.edit_message(view=self.view, embed=templateEmbed)
+        except discord.errors.NotFound:
+            await interaction.response.send_message(embed=templateEmbed, ephemeral=True)
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+
+
+class UseTemplateButton(discord.ui.Button):
+    def __init__(self, select: TemplateSelect):
+        super().__init__(label="양식 사용하기", style=discord.ButtonStyle.primary)
+        self.select = select
+
+    async def callback(self, interaction: discord.Interaction):
+        if self.select.selected_template:
+            await interaction.response.send_modal(TemplateModal(self.select.selected_template))
+        else:
+            await interaction.response.send_message("먼저 양식을 선택해주세요.", ephemeral=True)
 
 
 class SetupClient(commands.Bot):
@@ -71,6 +124,7 @@ class SetupClient(commands.Bot):
         intents.message_content = True
         super().__init__(command_prefix='!', intents=intents)
         self.synced = False
+        self.reminders = []
 
     async def setup_hook(self) -> None:
         if not self.synced:
@@ -78,68 +132,18 @@ class SetupClient(commands.Bot):
             self.synced = True
 
     async def on_ready(self) -> None:
-        await self.change_presence(activity=discord.CustomActivity(name="촐랑거리는중"))
+        await self.change_presence(activity=discord.Game(name="개발중"))
         scheduler.start()
-        load_reminders_from_file()
+        self.reminders = load_reminders_from_file(scheduler, self)
 
 
 bot = SetupClient()
 
-# Map Korean day names to cron day of week values
-KOREAN_DAYS_OF_WEEK = {
-    "월요일": "0",
-    "화요일": "1",
-    "수요일": "2",
-    "목요일": "3",
-    "금요일": "4",
-    "토요일": "5",
-    "일요일": "6"
-}
 
-reminders: List[Reminder] = []
-
-
-def save_reminders_to_file():
-    with open(REMINDER_FILE_PATH, 'w', encoding='utf-8') as file:
-        json.dump([reminder.to_dict() for reminder in reminders], file, ensure_ascii=False, indent=4)
-
-
-def load_reminders_from_file():
-    try:
-        with open(REMINDER_FILE_PATH, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-            for reminder_data in data:
-                reminder = Reminder.from_dict(reminder_data)
-                reminders.append(reminder)
-                schedule_reminder(reminder)
-    except FileNotFoundError:
-        pass
-    except json.JSONDecodeError:
-        pass
-
-
-def schedule_reminder(reminder: Reminder):
-    cron_trigger = CronTrigger(
-        hour=int(reminder.time.split(':')[0]),
-        minute=int(reminder.time.split(':')[1]),
-        day_of_week=','.join([KOREAN_DAYS_OF_WEEK[day] for day in reminder.day.split(',')])
-    )
-
-    async def reminder_action(_reminder: Reminder) -> None:
-        await _reminder.send_reminder(bot)
-        if _reminder.decrement_interval() == 0:
-            scheduler.remove_job(_reminder.job_id)
-            reminders.remove(_reminder)
-            save_reminders_to_file()
-
-    scheduler.add_job(
-        lambda: asyncio.run_coroutine_threadsafe(
-            reminder_action(reminder),
-            bot.loop
-        ),
-        cron_trigger,
-        id=reminder.job_id
-    )
+@bot.tree.command(name="질문", description="질문 양식을 띄웁니다.")
+async def question_command(interaction: discord.Interaction):
+    view = TemplateSelectView()
+    await interaction.response.send_message("질문 양식을 선택하세요.", view=view, ephemeral=True)
 
 
 @bot.tree.command(name="remind", description="지정된 요일과 시간에 리마인더를 생성합니다.")
@@ -177,54 +181,28 @@ async def remind_command(interaction: discord.Interaction, day: str, time: str, 
         job_id=job_id
     )
 
-    reminders.append(reminder)
-    schedule_reminder(reminder)
-    save_reminders_to_file()
+    bot.reminders.append(reminder)
+    schedule_reminder(reminder, scheduler, bot)
+    save_reminders_to_file(bot.reminders)
 
     await interaction.response.send_message(
         f"{','.join(days)} {time}에 '{content}' 내용으로 리마인더가 설정되었습니다. 반복 횟수: {'무한정' if interval == -1 else interval}",
         ephemeral=True)
 
 
-class ReminderButton(discord.ui.Button):
-    def __init__(self, reminder: Reminder):
-        super().__init__(label="삭제하기", style=discord.ButtonStyle.danger)
-        self.reminder = reminder
-
-    async def callback(self, interaction: discord.Interaction):
-        scheduler.remove_job(self.reminder.job_id)
-        reminders.remove(self.reminder)
-        save_reminders_to_file()
-        await interaction.response.send_message("리마인더가 삭제되었습니다.", ephemeral=True)
-
-
-class ReminderView(discord.ui.View):
-    def __init__(self, reminder: Reminder):
-        super().__init__()
-        self.add_item(ReminderButton(reminder))
-
-
-async def update_reminder_list(interaction: discord.Interaction) -> None:
-    channel_reminders = [r for r in reminders if r.channel_id == interaction.channel_id]
+@bot.tree.command(name="remind-list", description="설정된 모든 리마인더 목록을 확인합니다.")
+async def remind_list_command(interaction: discord.Interaction) -> None:
+    channel_reminders = [r for r in bot.reminders if r.channel_id == interaction.channel_id]
     if not channel_reminders:
-        await interaction.edit_original_response(content="설정된 리마인더가 없습니다.", view=None)
+        await interaction.response.send_message("설정된 리마인더가 없습니다.", ephemeral=True)
         return
 
     reminder_messages = []
-    views = []
     for r in channel_reminders:
         repeat_info = "무한정" if r.interval == -1 else f"{r.interval}"
         reminder_messages.append(f"{r.day} {r.time} - {r.content} (반복횟수: {repeat_info})")
-        views.append(ReminderView(r))
 
-    await interaction.edit_original_response(content="설정된 리마인더 목록:\n" + "\n".join(reminder_messages),
-                                             view=views[0] if views else None)
-
-
-@bot.tree.command(name="remind-list", description="설정된 모든 리마인더 목록을 확인합니다.")
-async def remind_list_command(interaction: discord.Interaction) -> None:
-    await interaction.response.send_message("리마인더 목록을 불러오는 중...", ephemeral=True)
-    await update_reminder_list(interaction)
+    await interaction.response.send_message("설정된 리마인더 목록:\n" + "\n".join(reminder_messages), ephemeral=True)
 
 
 if TOKEN:
