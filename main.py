@@ -1,13 +1,11 @@
 import datetime
 import os
 import uuid
-from typing import Optional
 
 import discord
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from discord import app_commands
 from discord.ext import commands
-from discord.interactions import InteractionChannel
 from dotenv import load_dotenv
 
 from reminders import Reminder, save_reminders_to_file, load_reminders_from_file, schedule_reminder, KOREAN_DAYS_OF_WEEK
@@ -49,7 +47,7 @@ class TemplateSelectView(discord.ui.View):
         self.add_item(UseTemplateButton(select))
 
 
-def log_template_selection(channel: Optional[InteractionChannel], template_name):
+def log_template_selection(channel, template_name):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"{timestamp} - Channel ID: {channel.id} | Channel Name: {channel.name} - Template: {template_name}\n"
 
