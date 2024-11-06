@@ -49,7 +49,9 @@ class TemplateSelectView(discord.ui.View):
 
 def log_template_selection(channel, template_name):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"{timestamp} - Channel ID: {channel.id} | Channel Name: {channel.name} - Template: {template_name}\n"
+    log_entry = (f"{timestamp} - Guild [ ID: {channel.guild.id} | Name: {channel.guild.name} ] - "
+                 f"Channel [ ID: {channel.id} | Name: {channel.name} ] - "
+                 f"Template: {template_name}\n")
 
     with open("question_log.txt", "a", encoding="utf-8") as log_file:
         log_file.write(log_entry)
