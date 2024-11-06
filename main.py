@@ -17,8 +17,9 @@ scheduler = AsyncIOScheduler()
 
 
 class TemplateModal(discord.ui.Modal, title="질문 양식 입력"):
-    def __init__(self, template_text):
+    def __init__(self, template_text, template_type):
         super().__init__()
+        self.template_type = template_type
         self.template_text = template_text
         self.text_input = discord.ui.TextInput(
             label="질문 내용",
@@ -33,6 +34,7 @@ class TemplateModal(discord.ui.Modal, title="질문 양식 입력"):
         channel = interaction.channel
         try:
             if channel:
+                log_template_selection(interaction.channel, self.template_type)
                 await channel.send(f"<@{user_id}>님의 질문이 제출되었습니다!\n{self.text_input.value}")
                 await interaction.response.send_message("질문이 작성되었어요!", ephemeral=True)
         except Exception as e:
@@ -122,9 +124,8 @@ class UseTemplateButton(discord.ui.Button):
         self.select = select
 
     async def callback(self, interaction: discord.Interaction):
-        log_template_selection(interaction.channel, self.select.values[0])
         if self.select.selected_template:
-            await interaction.response.send_modal(TemplateModal(self.select.selected_template))
+            await interaction.response.send_modal(TemplateModal(self.select.selected_template, self.select.values[0]))
         else:
             await interaction.response.send_message("먼저 양식을 선택해주세요.", ephemeral=True)
 
