@@ -1,11 +1,13 @@
 import datetime
 import os
 import uuid
+from typing import Optional
 
 import discord
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from discord import app_commands
 from discord.ext import commands
+from discord.interactions import InteractionChannel
 from dotenv import load_dotenv
 
 from reminders import Reminder, save_reminders_to_file, load_reminders_from_file, schedule_reminder, KOREAN_DAYS_OF_WEEK
@@ -47,6 +49,14 @@ class TemplateSelectView(discord.ui.View):
         self.add_item(UseTemplateButton(select))
 
 
+def log_template_selection(channel: Optional[InteractionChannel], template_name):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"{timestamp} - Channel ID: {channel.id} | Channel Name: {channel.name} - Template: {template_name}\n"
+
+    with open("question_log.txt", "a", encoding="utf-8") as log_file:
+        log_file.write(log_entry)
+
+
 class TemplateSelect(discord.ui.Select):
     def __init__(self):
         self.selected_template = ""
@@ -59,6 +69,8 @@ class TemplateSelect(discord.ui.Select):
         super().__init__(placeholder="질문 양식을 선택하세요", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
+        log_template_selection(interaction.channel, self.values[0])
+
         templateEmbed = discord.Embed(title="선택한 질문 템플릿", color=discord.Color.blue())
         if self.values[0] == "구체적인 질문 템플릿":
             self.selected_template = (
