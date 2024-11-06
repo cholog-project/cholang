@@ -69,8 +69,6 @@ class TemplateSelect(discord.ui.Select):
         super().__init__(placeholder="질문 양식을 선택하세요", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        log_template_selection(interaction.channel, self.values[0])
-
         templateEmbed = discord.Embed(title="선택한 질문 템플릿", color=discord.Color.blue())
         if self.values[0] == "구체적인 질문 템플릿":
             self.selected_template = (
@@ -124,6 +122,7 @@ class UseTemplateButton(discord.ui.Button):
         self.select = select
 
     async def callback(self, interaction: discord.Interaction):
+        log_template_selection(interaction.channel, self.select.values[0])
         if self.select.selected_template:
             await interaction.response.send_modal(TemplateModal(self.select.selected_template))
         else:
